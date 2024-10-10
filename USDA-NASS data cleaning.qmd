@@ -168,33 +168,41 @@ drop_one_value_col(strawberry)
                          too_many = "error",
                          too_few = "align_start"
                        )
- ## Use too_many and too_few to set up the separation operation. 
   
 ```
 
 ```{r}
-strawberry$Domain <- sub(",.*", "", strawberry$Domain)
+#strawberry$Domain <- sub(",.*", "", strawberry$Domain)
 
 
 strawberry <- strawberry |> 
   separate(col = `Fruit`, 
-           into = c(NA, "Fruit"),  # NA for the part you want to discard, keep the rest
+           into = c(NA, "Fruit"), 
            sep = "-", 
-           extra = "merge",  # In case there are multiple hyphens, merge everything after the first hyphen
-           fill = "right")  # Handle cases where no hyphen exists
-
+           extra = "merge",  
+           fill = "right")  
 unique(strawberry$Fruit)
 
 ```
 
 ```{r}
 strawberry <- strawberry |> 
-  separate(col = `Domain Category`, 
-           into = c(NA, "Domain Category"),  # NA for the part you want to discard, keep the rest
-           sep = ",", 
-           extra = "merge",  # In case there are multiple hyphens, merge everything after the first hyphen
-           fill = "right")  # Handle cases where no hyphen exists
-unique(strawberry$`Domain Category`)
+  separate_wider_delim( cols = 'Domain Category', delim = ":", names = c("Use", "Chem&Number"), too_few = "align_start")
+
+strawberry <- strawberry |> 
+  separate_wider_delim( cols = 'Chem&Number', delim = "=", names = c("Chemical Name", "Chem&Number"), too_few = "align_start")
+
+strawberry <- strawberry |>
+  mutate(
+    `Chemical Name` = gsub("[()]", "", `Chemical Name`), 
+    Code = gsub("\\)", "", `Chem&Number`)                  
+  )
+
+strawberry <- strawberry|> select(-`Chem&Number`)
+
+strawberry <- strawberry |>
+  relocate(Code, .after = `Chemical Name`) |>
+  relocate(Use, .after = Code)
 ```
 
 There is a problem you have to fix -- a leading space.
@@ -202,18 +210,102 @@ There is a problem you have to fix -- a leading space.
 ```{r}
 #|label: fix the leading space
 
- # note
 strawberry$Category[1]
-# strawberry$Item[2]
-# strawberry$Metric[6]
-# strawberry$Domain[1]
-## 
-## trim white space 
 
 strawberry$Category <- str_trim(strawberry$Category, side = "both")
 strawberry$Item <- str_trim(strawberry$Item, side = "both")
 strawberry$Metric <- str_trim(strawberry$Metric, side = "both")
 
+sum(is.na(strawberry$Metric))
+```
+
+```{r}
+strawberry <- strawberry |>
+  mutate(Metric = coalesce( if_else(str_detect(Category, "MEASURED"), Category,Metric))) |>
+  mutate(Category = if_else(str_detect(Category, "MEASURED"), NA_character_, Category))
+strawberry <- strawberry |>
+  mutate(Metric = coalesce( if_else(str_detect(Item, "MEASURED"), Item,Metric))) |>
+  mutate(Item = if_else(str_detect(Item, "MEASURED"), NA_character_, Item)) 
+
+strawberry$`Bearing Type` <- NA
+strawberry <- strawberry |>
+  relocate(`Bearing Type`, .after = Fruit)
+
+strawberry <- strawberry |>
+  mutate(`Bearing Type` = coalesce(if_else(str_detect(Category, "BEARING"), "BEARING", `Bearing Type`))) |>
+  mutate( Category = str_remove_all(Category, "BEARING")) |>
+  mutate(`Bearing Type` = coalesce(if_else(str_detect(Fruit, "NON-BEARING"), "NON-BEARING", `Bearing Type`))) |>
+  mutate( Fruit = str_remove_all(Fruit, "NON-BEARING")) |>
+  mutate(`Bearing Type` = coalesce(if_else(str_detect(Fruit, "BEARING"), "BEARING", `Bearing Type`))) |>
+  mutate( Fruit = str_remove_all(Fruit, "BEARING")) 
+```
+
+```{r}
+strawberry <- strawberry |> rename(Measure = Fruit)
+strawberry <- strawberry |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "UTILIZED - PRODUCTION"), "UTILIZED - PRODUCTION", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "UTILIZED - PRODUCTION")) |>
+  mutate(Measure = coalesce(Measure,
+                               if_else(str_detect(Item, "UTILIZED - PRODUCTION"), "UTILIZED - PRODUCTION", NA_character_))) |>
+  mutate( Item = str_remove_all(Item, "UTILIZED - PRODUCTION")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "ACRES HARVESTED"), "ACRES HARVESTED", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "ACRES HARVESTED")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "OPERATIONS WITH SALES"), "OPERATIONS WITH SALES", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "OPERATIONS WITH SALES")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "SALES"), "SALES", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "SALES")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "PRODUCTION"), "PRODUCTION", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "PRODUCTION")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "OPERATIONS WITH AREA HARVESTED"), "OPERATIONS WITH AREA HARVESTED", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "OPERATIONS WITH AREA HARVESTED")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "PRICE RECEIVED"), "PRICE RECEIVED", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "PRICE RECEIVED")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Item, "OPERATIONS WITH SALES"), "OPERATIONS WITH SALES", NA_character_))) |>
+  mutate( Item = str_remove_all(Item, "OPERATIONS WITH SALES")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Item, "SALES"), "SALES", NA_character_))) |>
+  mutate( Item = str_remove_all(Item, "SALES"))
+  
+ strawberry <- strawberry |>
+   mutate(
+     Category = gsub("[-]", "", Category), 
+    Item = gsub("[-]", "", Item)
+   )
+strawberry$Category <- str_trim(strawberry$Category, side = "both")
+strawberry$Item <- str_trim(strawberry$Item, side = "both")
+strawberry$Metric <- str_trim(strawberry$Metric, side = "both")
+
+strawberry <- strawberry |>
+  mutate(#Category = str_remove_all(Category,"ORGANIC"),
+         #Item = str_remove_all(Item, "ORGANIC"),
+         Use = str_remove_all(Use, "ORGANIC STATUS"),
+         Use = str_remove_all(Use, "CHEMICAL,"),
+         Domain = str_remove_all(Domain, ", FUNGICIDE"),
+         Domain = str_remove_all(Domain, ", INSECTICIDE"),
+         Domain = str_remove_all(Domain, ", HERBICIDE"),
+         Domain = str_remove_all(Domain, "FERTILIZER"),
+         Domain = str_remove_all(Domain, ", OTHER")
+         )
+
+
+```
+
+```{r}
+strawberry <- strawberry |>
+  mutate(Applications = str_c(Category, Item))
+
+
+```
+
+```         
 ```
 
 ## now exam the Fruit column -- find hidden sub-columns
@@ -250,11 +342,11 @@ Which ones need to be split?
 ```{r}
 #|label: split srawberry into census and survey pieces
 
-strw_b_sales <- strawberry |> filter(Program == "CENSUS")
+census <- strawberry |> filter(Program == "CENSUS")
 
-strw_b_chem <- strawberry |> filter(Program == "SURVEY")
+survey <- strawberry |> filter(Program == "SURVEY")
 
-nrow(strawberry) == (nrow(strw_b_chem) + nrow(strw_b_sales))
+nrow(strawberry) == (nrow(census) + nrow(survey))
 
 ## Move marketing-related rows in strw_b_chem 
 ## to strw_b_sales
