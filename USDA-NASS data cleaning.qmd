@@ -2,7 +2,7 @@
 title: "Stawberries"
 author: MA615
 date: 2024 Sept 25
-format: html
+format: pdf
 editor: visual
 ---
 
@@ -122,7 +122,7 @@ calif_survey <- strawberry |> select(Year, Period, `Data Item`, Value)
 
 ```
 
-## remove columns with a single value in all columns
+## Remove columns with a single value in all columns and county in `Geo Level`
 
 ```{r}
 #|label: drop 1-item columns
@@ -174,9 +174,9 @@ strawberry <- strawberry |>
   
 ```
 
-```{r}
-#strawberry$Domain <- sub(",.*", "", strawberry$Domain)
+Split `Fruit` by `-` in order to remove `strawberry` from each cell.
 
+```{r}
 
 strawberry <- strawberry |> 
   separate(col = `Fruit`, 
@@ -187,6 +187,8 @@ strawberry <- strawberry |>
 unique(strawberry$Fruit)
 
 ```
+
+Split `Domain Category` into three columns accordingly to `Chemical Name`, `Use` and `Code`. Removed additional signs such as `()`
 
 ```{r}
 strawberry <- strawberry |> 
@@ -222,6 +224,10 @@ strawberry$Metric <- str_trim(strawberry$Metric, side = "both")
 sum(is.na(strawberry$Metric))
 ```
 
+Fixing Metric as some of its values were found in `Category` and `Item` Columns.
+
+Created a New Column `Bearing Type` and filled it with adequate values from other columns.
+
 ```{r}
 strawberry <- strawberry |>
   mutate(Metric = coalesce( if_else(str_detect(Category, "MEASURED"), Category,Metric))) |>
@@ -242,6 +248,8 @@ strawberry <- strawberry |>
   mutate(`Bearing Type` = coalesce(if_else(str_detect(Fruit, "BEARING"), "BEARING", `Bearing Type`))) |>
   mutate( Fruit = str_remove_all(Fruit, "BEARING")) 
 ```
+
+Created Measure from Fruit and started taking misplaced values from other columns into it. Removing extra words from some columns.
 
 ```{r}
 strawberry <- strawberry |> rename(Measure = Fruit)
@@ -299,6 +307,12 @@ strawberry <- strawberry |>
          )
 ```
 
+Taking extra values into "Measure Column" which can help in reducing the NAs in the "Measure" Column.
+
+Combined Category and Item after finding almost same values.
+
+Removing the Blank Space in some of the Columns.
+
 ```{r}
 
 values_to_shift <- c("AVG", "ADJUSTED BASE", "10 YEAR AVG", "10 YEAR AVG FOR PARITY PURPOSES")
@@ -323,11 +337,11 @@ strawberry$Code <- str_trim(strawberry$Code, side = "both")
 strawberry$Use <- str_trim(strawberry$Use, side = "both")
 ```
 
-## now examine the rest of the columns
+## Now Examine the Rest of the Columns
 
 Which ones need to be split?
 
-## split sales and chemicals into two dataframes
+## Split Sales , Chemicals, Organic and Non-Organic into Different Dataframes
 
 (do this last after separating rows into separate data frames) (THEN rename the columns to correspond the analysis being done with the data frames)
 
@@ -355,6 +369,8 @@ survey_non_chemical <- survey |> filter(Domain != "CHEMICAL")
 
 ```
 
+Writing Code into different CSV Files
+
 ```{r}
 write.csv(strawberry, file = "strawberry_cleaneddata.csv")
 write.csv(census, file = "census_data.csv")
@@ -365,13 +381,7 @@ write.csv(survey_chemical, file = "survey_chemical.csv")
 write.csv(survey_non_chemical, file = "survey_non_chemical.csv")
 ```
 
-## chemicals
-
-### carcinogens from WHO list
-
-Six specific pesticides - captafol, ethylene dibromide, glyphosate, malathion, diazinon and dichlorophenyltrichloroethane (DDT)
-
-for EPA number lookup [epa numbers](https://archive.epa.gov/pesticides/chemicalsearch/chemical/foia/web/html/128810.html)
+[epa numbers](https://archive.epa.gov/pesticides/chemicalsearch/chemical/foia/web/html/128810.html)
 
 [Active Pesticide Product Registration Informational Listing](https://ordspub.epa.gov/ords/pesticides/f?p=APPRIL_PUBLIC:2::::::)
 
