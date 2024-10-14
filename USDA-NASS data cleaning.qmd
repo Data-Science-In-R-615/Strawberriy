@@ -203,7 +203,7 @@ strawberry <- strawberry |>
     Code = gsub("\\)", "", `Chem&Number`)                  
   )
 
-strawberry <- strawberry|> select(-`Chem&Number`)
+strawberry <- strawberry|> select(-`Chem&Number`, -`Ag District`,-`County ANSI`,-`Ag District Code`, -County)
 
 strawberry <- strawberry |>
   relocate(Code, .after = `Chemical Name`) |>
@@ -335,6 +335,9 @@ strawberry$Measure <- str_trim(strawberry$Measure, side = "both")
 strawberry$`Chemical Name`<- str_trim(strawberry$`Chemical Name`, side = "both")
 strawberry$Code <- str_trim(strawberry$Code, side = "both")
 strawberry$Use <- str_trim(strawberry$Use, side = "both")
+
+strawberry$Value[strawberry$Value =="(D)"] <- NA
+strawberry$Value[strawberry$Value =="(Z)"] <- NA
 ```
 
 ## Now Examine the Rest of the Columns
@@ -353,20 +356,18 @@ census <- strawberry |> filter(Program == "CENSUS")
 survey <- strawberry |> filter(Program == "SURVEY")
 
 nrow(strawberry) == (nrow(census) + nrow(survey))
-census <- census |>
-  mutate(Certified = if_else(`Chemical Name` == " NOP USDA CERTIFIED", "NOP USDA CERTIFIED", NA_character_)) |>
-  rename(`Size-Bracket` = `Chemical Name`) |>
-  relocate(Certified, .after = Domain)
-
-## Move marketing-related rows in strw_b_chem 
-## to strw_b_sales
 census_organic <- census |> filter(Domain == "ORGANIC STATUS")
 census_non_organic <- census |> filter(Domain != "ORGANIC STATUS")
 survey_chemical <- survey |> filter(Domain == "CHEMICAL")
 survey_non_chemical <- survey |> filter(Domain != "CHEMICAL")
+census_non_organic <- census_non_organic |>
+  rename(`Size-Bracket` = `Chemical Name`) |>
+  mutate(`Size-Bracket` = replace_na(`Size-Bracket`, "TOTAL"))
+census_organic <- census_organic |> drop_one_value_col()
 
-
-
+census_non_organic <- census_non_organic |> drop_one_value_col()
+survey_chemical <- survey_chemical |> drop_one_value_col()
+survey_non_chemical <- survey_non_chemical |> drop_one_value_col()
 ```
 
 Writing Code into different CSV Files
