@@ -1,0 +1,425 @@
+---
+title: "Stawberries"
+author: MA615
+date: 2024 Sept 25
+format: pdf
+editor: visual
+---
+
+# Preparing data for analysis
+
+## Introduction: foundations
+
+Before we begin to work with the strawberry data, let's talk about how we will approach the work.
+
+### Data cleaning and organization
+
+Cleaning and organizing data for analysis is an essential skill for data scientists. Serious data analyses must be presented with the data on which the results depend. The credibility of data analysis and modelling depends on the care taken in data preparation and organization.
+
+#### References
+
+In their handbook ["An introduction to data cleaning with R" by Edwin de Jonge and Mark van der Loo](https://cran.r-project.org/doc/contrib/de_Jonge+van_der_Loo-Introduction_to_data_cleaning_with_R.pdf), de Jonge and van der Loo go into detail about specific data cleaning isssues and how to handle them in R.
+
+["Problems, Methods, and Challenges in Comprehensive Data Cleansing" by Heiko Müller and Johann-Christoph Freytag](https://www.researchgate.net/profile/Heiko-Mueller/publication/228929938_Problems_methods_and_challenges_in_comprehensive_data_cleansing/links/09e415101b58541e2c000000/Problems-methods-and-challenges-in-comprehensive-data-cleansing.pdf) is a good companion to the de Jonge and van der Loo handbook, offering additional issues in their discussion.
+
+### Attitudes
+
+Mechanistic descriptions of data cleaning methods are insufficient.
+
+#### Data is the product (or by-product) of purposeful human activity
+
+Much of the data used in analysis accessed on local databases or online which may create the impression that the data have been carefully curated. Beware. Data are produced by people for a purpose, with a point-of-view, and at a time and location that may affect the data. The provenance and lineage of the data are meta data you should include when reporting analysis. Data collection is purposeful human activity with all of the risks and weaknesses that are part of any purposeful human activity.
+
+#### Data is language
+
+Data has meaning. Data can be included in sentences related to the meaning of the data. Cleaning and organizing data should be informed by the meaning the data convey and how that meaning relates to the research you are doing do achieve this important result.
+
+-   Immerse yourself in the data. Put data into context.
+
+-   Visualize the data to find problems, confirm your understandings, and plan your data organization. People do a bad job of seeing meaningful patterns in data but a good job of seeing patterns of all kinds when data are rendered as plots. As you product and show visualizations, ask your self and those who view your presentations, "what do you see?" and "what do you wonder?"
+
+## Example: Strawberries
+
+### Public information
+
+[WHO says strawberries may not be so safe for you--2017March16](https://med.news.am/eng/news/13621/who-says-strawberries-may-not-be-so-safe-for-you.html)
+
+[Pesticides + poison gases = cheap, year-round strawberries 2019March20](https://www.ewg.org/foodnews/strawberries.php)
+
+[Multistate Outbreak of Hepatitis A Virus Infections Linked to Fresh Organic Strawberries-2022March5](https://www.cdc.gov/hepatitis/outbreaks/fresh-strawberries-2022/?CDC_AAref_Val=https://www.cdc.gov/hepatitis/outbreaks/2022/hav-contaminated-food/index.htm)
+
+[Strawberry makes list of cancer-fighting foods-2023May31](https://issuu.com/mechlocal/docs/053123_mech_asf/s/25386339)
+
+## What is the question?
+
+-   Where they are grown? By whom?
+
+-   Are they really loaded with carcinogenic poisons?
+
+-   Are they really good for your health? Bad for your health?
+
+-   Are organic strawberries carriers of deadly diseases?
+
+-   When I go to the market should I buy conventional or organic strawberries?
+
+## The data
+
+The data set for this assignment has been selected from: \[[USDA_NASS_strawb_2024SEP25](https://quickstats.nass.usda.gov) <br> The data have been stored on NASS here: [USDA_NASS_strawb_2024SEP25](https://quickstats.nass.usda.gov/results/28141CE5-7429-36C3-A385-33ACC8030763)
+
+and has been stored on the blackboard as strawberries25_v3.csv.
+
+## USDA NASS
+
+```{r}
+#| label: load libraries
+#| warning: false
+#| message: false
+
+library(knitr)  
+library(kableExtra)
+library(tidyverse)
+library(stringr)
+```
+
+## Read the file
+
+```{r}
+#| label: read data - glimpse 
+
+strawberry <- read_csv("strawberries25_v3.csv", col_names = TRUE)
+
+glimpse(strawberry)
+```
+
+Examine the data. How is it organized?
+
+```{r}
+
+## is every line associated with a state?
+
+state_all <- strawberry |> distinct(State)
+
+state_all1 <- strawberry |> group_by(State) |> count()
+
+## every row is associated with a state
+
+sum(state_all1$n) == dim(strawberry)[1]
+
+
+## to get an idea of the data -- looking at california only
+
+calif_census <- strawberry |> filter((State=="CALIFORNIA") & (Program=="CENSUS"))
+
+calif_census <- calif_census |> select(Year, `Data Item`, Value)
+
+### 
+
+calif_survey <- strawberry |> filter((State=="CALIFORNIA") & (Program=="SURVEY"))
+
+calif_survey <- strawberry |> select(Year, Period, `Data Item`, Value)
+
+
+
+```
+
+## Remove columns with a single value in all columns and county in `Geo Level`
+
+```{r}
+#|label: drop 1-item columns
+
+drop_one_value_col <- function(df){
+drop <- NULL
+for(i in 1:dim(df)[2]){
+if((df |> distinct(df[,i]) |> count()) == 1){
+drop = c(drop, i)
+} }
+
+if(is.null(drop)){return("none")}else{
+
+   print("Columns dropped:")
+   print(colnames(df)[drop])
+   strawberry <- df[, -1*drop]
+   }
+}
+
+
+## use the function
+
+strawberry <- drop_one_value_col(strawberry)
+
+drop_one_value_col(strawberry)
+
+strawberry <- strawberry |>
+  filter(`Geo Level` == "NATIONAL" | `Geo Level` == "STATE")
+
+```
+
+## separate composite columns
+
+### `Data Item` into (fruit, category, item)
+
+```{r}
+#|label: split Data Item
+
+  strawberry <- strawberry |>
+  separate_wider_delim(  cols = `Data Item`,
+                         delim = ",",
+                         names = c("Fruit",
+                                 "Category",
+                                 "Item",
+                                 "Metric"),
+                         too_many = "error",
+                         too_few = "align_start"
+                       )
+  
+```
+
+Split `Fruit` by `-` in order to remove `strawberry` from each cell.
+
+```{r}
+
+strawberry <- strawberry |> 
+  separate(col = `Fruit`, 
+           into = c(NA, "Fruit"), 
+           sep = "-", 
+           extra = "merge",  
+           fill = "right")  
+unique(strawberry$Fruit)
+
+```
+
+Split `Domain Category` into three columns accordingly to `Chemical Name`, `Use` and `Code`. Removed additional signs such as `()`
+
+```{r}
+strawberry <- strawberry |> 
+  separate_wider_delim( cols = 'Domain Category', delim = ":", names = c("Use", "Chem&Number"), too_few = "align_start")
+
+strawberry <- strawberry |> 
+  separate_wider_delim( cols = 'Chem&Number', delim = "=", names = c("Chemical Name", "Chem&Number"), too_few = "align_start")
+
+strawberry <- strawberry |>
+  mutate(
+    `Chemical Name` = gsub("[()]", "", `Chemical Name`), 
+    Code = gsub("\\)", "", `Chem&Number`)                  
+  )
+
+strawberry <- strawberry|> select(-`Chem&Number`, -`Ag District`,-`County ANSI`,-`Ag District Code`, -County)
+
+strawberry <- strawberry |>
+  relocate(Code, .after = `Chemical Name`) |>
+  relocate(Use, .after = Code)
+```
+
+There is a problem you have to fix -- a leading space.
+
+```{r}
+#|label: fix the leading space
+
+strawberry$Category[1]
+
+strawberry$Category <- str_trim(strawberry$Category, side = "both")
+strawberry$Item <- str_trim(strawberry$Item, side = "both")
+strawberry$Metric <- str_trim(strawberry$Metric, side = "both")
+
+sum(is.na(strawberry$Metric))
+```
+
+Fixing Metric as some of its values were found in `Category` and `Item` Columns.
+
+Created a New Column `Bearing Type` and filled it with adequate values from other columns.
+
+```{r}
+strawberry <- strawberry |>
+  mutate(Metric = coalesce( if_else(str_detect(Category, "MEASURED"), Category,Metric))) |>
+  mutate(Category = if_else(str_detect(Category, "MEASURED"), NA_character_, Category))
+strawberry <- strawberry |>
+  mutate(Metric = coalesce( if_else(str_detect(Item, "MEASURED"), Item,Metric))) |>
+  mutate(Item = if_else(str_detect(Item, "MEASURED"), NA_character_, Item)) 
+
+strawberry$`Bearing Type` <- NA
+strawberry <- strawberry |>
+  relocate(`Bearing Type`, .after = Fruit)
+
+strawberry <- strawberry |>
+  mutate(`Bearing Type` = coalesce(if_else(str_detect(Category, "BEARING"), "BEARING", `Bearing Type`))) |>
+  mutate( Category = str_remove_all(Category, "BEARING")) |>
+  mutate(`Bearing Type` = coalesce(if_else(str_detect(Fruit, "NON-BEARING"), "NON-BEARING", `Bearing Type`))) |>
+  mutate( Fruit = str_remove_all(Fruit, "NON-BEARING")) |>
+  mutate(`Bearing Type` = coalesce(if_else(str_detect(Fruit, "BEARING"), "BEARING", `Bearing Type`))) |>
+  mutate( Fruit = str_remove_all(Fruit, "BEARING")) 
+```
+
+Created Measure from Fruit and started taking misplaced values from other columns into it. Removing extra words from some columns.
+
+```{r}
+strawberry <- strawberry |> rename(Measure = Fruit)
+strawberry <- strawberry |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "UTILIZED - PRODUCTION"), "UTILIZED - PRODUCTION", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "UTILIZED - PRODUCTION")) |>
+  mutate(Measure = coalesce(Measure,
+                               if_else(str_detect(Item, "UTILIZED - PRODUCTION"), "UTILIZED - PRODUCTION", NA_character_))) |>
+  mutate( Item = str_remove_all(Item, "UTILIZED - PRODUCTION")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "ACRES HARVESTED"), "ACRES HARVESTED", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "ACRES HARVESTED")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "OPERATIONS WITH SALES"), "OPERATIONS WITH SALES", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "OPERATIONS WITH SALES")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "SALES"), "SALES", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "SALES")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "PRODUCTION"), "PRODUCTION", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "PRODUCTION")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "OPERATIONS WITH AREA HARVESTED"), "OPERATIONS WITH AREA HARVESTED", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "OPERATIONS WITH AREA HARVESTED")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Category, "PRICE RECEIVED"), "PRICE RECEIVED", NA_character_))) |>
+  mutate( Category = str_remove_all(Category, "PRICE RECEIVED")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Item, "OPERATIONS WITH SALES"), "OPERATIONS WITH SALES", NA_character_))) |>
+  mutate( Item = str_remove_all(Item, "OPERATIONS WITH SALES")) |>
+  mutate(Measure = coalesce(Measure, 
+                               if_else(str_detect(Item, "SALES"), "SALES", NA_character_))) |>
+  mutate( Item = str_remove_all(Item, "SALES"))
+  
+ strawberry <- strawberry |>
+   mutate(
+     Category = gsub("[-]", "", Category), 
+    Item = gsub("[-]", "", Item)
+   )
+strawberry$Category <- str_trim(strawberry$Category, side = "both")
+strawberry$Item <- str_trim(strawberry$Item, side = "both")
+strawberry$Metric <- str_trim(strawberry$Metric, side = "both")
+
+strawberry <- strawberry |>
+  mutate(Category = str_remove_all(Category,"ORGANIC"),
+         Item = str_remove_all(Item, "ORGANIC"),
+         Use = str_remove_all(Use, "ORGANIC STATUS"),
+         Use = str_remove_all(Use, "CHEMICAL,"),
+         Domain = str_remove_all(Domain, ", FUNGICIDE"),
+         Domain = str_remove_all(Domain, ", INSECTICIDE"),
+         Domain = str_remove_all(Domain, ", HERBICIDE"),
+         Domain = str_remove_all(Domain, "FERTILIZER"),
+         Domain = str_remove_all(Domain, ", OTHER")
+         )
+```
+
+Taking extra values into "Measure Column" which can help in reducing the NAs in the "Measure" Column.
+
+Combined Category and Item after finding almost same values.
+
+Removing the Blank Space in some of the Columns.
+
+```{r}
+
+values_to_shift <- c("AVG", "ADJUSTED BASE", "10 YEAR AVG", "10 YEAR AVG FOR PARITY PURPOSES")
+
+strawberry <- strawberry |>
+  mutate(
+    Measure = ifelse(Item %in% values_to_shift, 
+                        paste(Measure, Item , sep = "-"),
+                        Measure),  
+    Item = ifelse(Item %in% values_to_shift, NA_character_, Item) 
+  ) |> 
+  mutate(Applications = str_c(coalesce(Category, ""), coalesce(Item, ""))) |>
+  mutate(Domain = na_if(Domain, ""),
+         Applications = na_if(Applications, ""),
+         Use = na_if(Use, "")) |>
+  relocate(Applications, .after = Measure) |>
+  select(-Item, -Category)
+
+strawberry$Measure <- str_trim(strawberry$Measure, side = "both")
+strawberry$`Chemical Name`<- str_trim(strawberry$`Chemical Name`, side = "both")
+strawberry$Code <- str_trim(strawberry$Code, side = "both")
+strawberry$Use <- str_trim(strawberry$Use, side = "both")
+
+strawberry$Value[strawberry$Value =="(D)"] <- NA
+strawberry$Value[strawberry$Value =="(Z)"] <- NA
+```
+
+## Now Examine the Rest of the Columns
+
+Which ones need to be split?
+
+## Split Sales , Chemicals, Organic and Non-Organic into Different Dataframes
+
+(do this last after separating rows into separate data frames) (THEN rename the columns to correspond the analysis being done with the data frames)
+
+```{r}
+#|label: split srawberry into census and survey pieces
+
+census <- strawberry |> filter(Program == "CENSUS")
+
+survey <- strawberry |> filter(Program == "SURVEY")
+
+nrow(strawberry) == (nrow(census) + nrow(survey))
+census_organic <- census |> filter(Domain == "ORGANIC STATUS")
+census_non_organic <- census |> filter(Domain != "ORGANIC STATUS")
+survey_chemical <- survey |> filter(Domain == "CHEMICAL")
+survey_non_chemical <- survey |> filter(Domain != "CHEMICAL")
+census_non_organic <- census_non_organic |>
+  rename(`Size-Bracket` = `Chemical Name`) |>
+  mutate(`Size-Bracket` = replace_na(`Size-Bracket`, "TOTAL"))
+census_organic <- census_organic |> drop_one_value_col()
+
+census_non_organic <- census_non_organic |> drop_one_value_col()
+survey_chemical <- survey_chemical |> drop_one_value_col()
+survey_non_chemical <- survey_non_chemical |> drop_one_value_col()
+```
+
+Writing Code into different CSV Files
+
+```{r}
+write.csv(strawberry, file = "strawberry_cleaneddata.csv")
+write.csv(census, file = "census_data.csv")
+write.csv(survey, file = "survey_data.csv")
+write.csv(census_organic, file = "census_organic.csv")
+write.csv(census_non_organic, file = "census_non_organic.csv")
+write.csv(survey_chemical, file = "survey_chemical.csv")
+write.csv(survey_non_chemical, file = "survey_non_chemical.csv")
+```
+
+[epa numbers](https://archive.epa.gov/pesticides/chemicalsearch/chemical/foia/web/html/128810.html)
+
+[Active Pesticide Product Registration Informational Listing](https://ordspub.epa.gov/ords/pesticides/f?p=APPRIL_PUBLIC:2::::::)
+
+[CAS for Methyl Bromide](https://ordspub.epa.gov/ords/pesticides/f?p=113:17::::::)
+
+[pesticide chemical search](https://ordspub.epa.gov/ords/pesticides/f?p=chemicalsearch:1)
+
+[toxic chemical dashboard](https://comptox.epa.gov/dashboard/)
+
+[pubChem](https://pubchem.ncbi.nlm.nih.gov/)
+
+The EPA PC (Pesticide Chemical) Code is a unique chemical code number assigned by the EPA to a particular pesticide active ingredient, inert ingredient or mixture of active ingredients.
+
+Investigating toxic pesticides
+
+[start here with chem PC code](https://ordspub.epa.gov/ords/pesticides/f?p=chemicalsearch:1)
+
+[step 2](https://ordspub.epa.gov/ords/pesticides/f?p=113:1::::RP,17,1::) to get label (with warnings) for products using the chemical
+
+[Pesticide Product and Label System](https://ordspub.epa.gov/ords/pesticides/f?p=113:1::::RP,17,1::)
+
+[Search by Chemical](https://ordspub.epa.gov/ords/pesticides/f?p=113:17::::::)
+
+[CompTox Chemicals Dashboard](https://comptox.epa.gov/dashboard/)
+
+[Active Pesticide Product Registration Informational Listing](https://ordspub.epa.gov/ords/pesticides/f?p=APPRIL_PUBLIC:2::::::)
+
+[OSHA chemical database](https://www.osha.gov/chemicaldata)
+
+[Pesticide Ingredients](http://npic.orst.edu/ingred/)
+
+[NPIC Product Research Online (NPRO)](http://npic.orst.edu/NPRO/)
+
+[Databases for Chemical Information](http://npic.orst.edu/ingred/cheminfo.html)
+
+[Pesticide Active Ingredients](http://npic.orst.edu/ingred/active.html)
+
+[TSCA Chemical Substance Inventory](https://www.epa.gov/tsca-inventory)
+
+[glyphosate](https://ordspub.epa.gov/ords/pesticides/f?p=CHEMICALSEARCH:3::::1,3,31,7,12,25:P3_XCHEMICAL_ID:2478)
