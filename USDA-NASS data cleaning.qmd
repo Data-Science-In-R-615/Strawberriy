@@ -60,7 +60,7 @@ Data has meaning. Data can be included in sentences related to the meaning of th
 
 -   Are organic strawberries carriers of deadly diseases?
 
--   When I go to the market should I buy conventional or organic strawberries?
+-   When I go to the Market should I buy conventional or organic strawberries?
 
 ## The data
 
@@ -79,6 +79,7 @@ library(knitr)
 library(kableExtra)
 library(tidyverse)
 library(stringr)
+library(magrittr)
 ```
 
 ## Read the file
@@ -88,7 +89,7 @@ library(stringr)
 
 strawberry <- read_csv("strawberries25_v3.csv", col_names = TRUE)
 
-glimpse(strawberry)
+#glimpse(strawberry)
 ```
 
 Examine the data. How is it organized?
@@ -118,32 +119,95 @@ calif_survey <- strawberry |> filter((State=="CALIFORNIA") & (Program=="SURVEY")
 
 calif_survey <- strawberry |> select(Year, Period, `Data Item`, Value)
 
-
-
 ```
 
 ## Remove columns with a single value in all columns and county in `Geo Level`
 
 ```{r}
-#|label: drop 1-item columns
+#| label: function def - drop 1-item columns
+#| echo: false
 
-drop_one_value_col <- function(df){
-drop <- NULL
-for(i in 1:dim(df)[2]){
-if((df |> distinct(df[,i]) |> count()) == 1){
-drop = c(drop, i)
-} }
+drop_one_value_col <- function(df, prt_val = FALSE){ 
+ # browser()
+  df_id <- ensym(df)
+  if(prt_val){
+  msg = paste("Looking for single value columns in data frame: ",as.character(df_id) )
+  print(msg)}
+  ## takes whole dataframe
+dropc <- NULL
+val <- NULL
+## test each column for a single value
+for(i in 1:dim(df)[2]){   
+  if(dim(distinct(df[,i]))[1] == 1){
+    dropc <- c(dropc, i)
+    val <- c(val, df[1,i])
+  }
+} 
 
-if(is.null(drop)){return("none")}else{
-
+if(prt_val){
+if(is.null(dropc)){
+  print("No columns dropped")
+  return(df)}else{
    print("Columns dropped:")
-   print(colnames(df)[drop])
-   strawberry <- df[, -1*drop]
-   }
+   # print(colnames(df)[drop])
+   print(unlist(val))
+   df <- df[, -1*dropc]
+   return(df)
+  }
+}
+ df <- df[, -1*dropc]
+   return(df)
 }
 
+## function shift_loc
+## Moves adjacent data cells in a data.frame on a single row
+## Use this function to fix alignment problems after separating 
+## columns containing multiple columns of data. 
 
-## use the function
+## Of course the working assumption is that there is room in the 
+## data frame for the data you're shifting.
+##
+## The data cells that are empty after the data shift are NA.
+## 
+## Input paramaters
+## 
+## df -- data frame
+## col_name -- name of colume where the left-most data item is located
+## dat_name -- name of data item in the column
+## num_col -- the number of columns is the same as the number of
+##            adjacent data to be moved.
+## num_shift -- the number of rows to move the data 
+##
+
+
+shift_loc <- function(df, col_name, dat_name, num_col, num_shift){
+ # browser()
+  col_num = which(colnames(df) == col_name)
+  row_num = which(df[,col_num] == dat_name)  ## calcs a vector of rows
+  
+  for(k in 1:length(row_num)){
+  d = rep(0,num_col) ## storage for items to be moved
+  for(i in 1:num_col){
+    d[i] = df[row_num[k], col_num + i - 1]
+  }
+  for(i in 1:num_col){
+    ra = row_num[k]
+    cb = col_num + i - 1
+    df[ra, cb] <-  NA
+  }
+  for(j in 1:num_col){
+    rc = row_num[k]
+    cd = col_num + j - 1 + num_shift
+    df[rc, cd] = d[j]
+  }
+  }
+ # sprintf("Rows adjusted:")
+  # print("%d",row_num)
+  return(df)
+}
+```
+
+```{r}
 
 strawberry <- drop_one_value_col(strawberry)
 
@@ -151,224 +215,489 @@ drop_one_value_col(strawberry)
 
 strawberry <- strawberry |>
   filter(`Geo Level` == "NATIONAL" | `Geo Level` == "STATE")
-
 ```
 
-## separate composite columns
+## Separate strawberry data set into small data sets to understand the data better
 
-### `Data Item` into (fruit, category, item)
+We separated `Census` and `Survey` data from the `strawberry` data set in order to examine the data better. Furthermore, `Data Item` column was separated into two column : `Fruit` and `Category`by `-` .
 
-```{r}
-#|label: split Data Item
-
-  strawberry <- strawberry |>
-  separate_wider_delim(  cols = `Data Item`,
-                         delim = ",",
-                         names = c("Fruit",
-                                 "Category",
-                                 "Item",
-                                 "Metric"),
-                         too_many = "error",
-                         too_few = "align_start"
-                       )
-  
-```
-
-Split `Fruit` by `-` in order to remove `strawberry` from each cell.
+Focusing on the census data first, `Fruit` is further divided into `ORGANIC` and `Organic detail` leading us to get `organic` data set from census.
 
 ```{r}
-
-strawberry <- strawberry |> 
-  separate(col = `Fruit`, 
-           into = c(NA, "Fruit"), 
-           sep = "-", 
-           extra = "merge",  
-           fill = "right")  
-unique(strawberry$Fruit)
-
-```
-
-Split `Domain Category` into three columns accordingly to `Chemical Name`, `Use` and `Code`. Removed additional signs such as `()`
-
-```{r}
-strawberry <- strawberry |> 
-  separate_wider_delim( cols = 'Domain Category', delim = ":", names = c("Use", "Chem&Number"), too_few = "align_start")
-
-strawberry <- strawberry |> 
-  separate_wider_delim( cols = 'Chem&Number', delim = "=", names = c("Chemical Name", "Chem&Number"), too_few = "align_start")
-
-strawberry <- strawberry |>
-  mutate(
-    `Chemical Name` = gsub("[()]", "", `Chemical Name`), 
-    Code = gsub("\\)", "", `Chem&Number`)                  
-  )
-
-strawberry <- strawberry|> select(-`Chem&Number`, -`Ag District`,-`County ANSI`,-`Ag District Code`, -County)
-
-strawberry <- strawberry |>
-  relocate(Code, .after = `Chemical Name`) |>
-  relocate(Use, .after = Code)
-```
-
-There is a problem you have to fix -- a leading space.
-
-```{r}
-#|label: fix the leading space
-
-strawberry$Category[1]
-
-strawberry$Category <- str_trim(strawberry$Category, side = "both")
-strawberry$Item <- str_trim(strawberry$Item, side = "both")
-strawberry$Metric <- str_trim(strawberry$Metric, side = "both")
-
-sum(is.na(strawberry$Metric))
-```
-
-Fixing Metric as some of its values were found in `Category` and `Item` Columns.
-
-Created a New Column `Bearing Type` and filled it with adequate values from other columns.
-
-```{r}
-strawberry <- strawberry |>
-  mutate(Metric = coalesce( if_else(str_detect(Category, "MEASURED"), Category,Metric))) |>
-  mutate(Category = if_else(str_detect(Category, "MEASURED"), NA_character_, Category))
-strawberry <- strawberry |>
-  mutate(Metric = coalesce( if_else(str_detect(Item, "MEASURED"), Item,Metric))) |>
-  mutate(Item = if_else(str_detect(Item, "MEASURED"), NA_character_, Item)) 
-
-strawberry$`Bearing Type` <- NA
-strawberry <- strawberry |>
-  relocate(`Bearing Type`, .after = Fruit)
-
-strawberry <- strawberry |>
-  mutate(`Bearing Type` = coalesce(if_else(str_detect(Category, "BEARING"), "BEARING", `Bearing Type`))) |>
-  mutate( Category = str_remove_all(Category, "BEARING")) |>
-  mutate(`Bearing Type` = coalesce(if_else(str_detect(Fruit, "NON-BEARING"), "NON-BEARING", `Bearing Type`))) |>
-  mutate( Fruit = str_remove_all(Fruit, "NON-BEARING")) |>
-  mutate(`Bearing Type` = coalesce(if_else(str_detect(Fruit, "BEARING"), "BEARING", `Bearing Type`))) |>
-  mutate( Fruit = str_remove_all(Fruit, "BEARING")) 
-```
-
-Created Measure from Fruit and started taking misplaced values from other columns into it. Removing extra words from some columns.
-
-```{r}
-strawberry <- strawberry |> rename(Measure = Fruit)
-strawberry <- strawberry |>
-  mutate(Measure = coalesce(Measure, 
-                               if_else(str_detect(Category, "UTILIZED - PRODUCTION"), "UTILIZED - PRODUCTION", NA_character_))) |>
-  mutate( Category = str_remove_all(Category, "UTILIZED - PRODUCTION")) |>
-  mutate(Measure = coalesce(Measure,
-                               if_else(str_detect(Item, "UTILIZED - PRODUCTION"), "UTILIZED - PRODUCTION", NA_character_))) |>
-  mutate( Item = str_remove_all(Item, "UTILIZED - PRODUCTION")) |>
-  mutate(Measure = coalesce(Measure, 
-                               if_else(str_detect(Category, "ACRES HARVESTED"), "ACRES HARVESTED", NA_character_))) |>
-  mutate( Category = str_remove_all(Category, "ACRES HARVESTED")) |>
-  mutate(Measure = coalesce(Measure, 
-                               if_else(str_detect(Category, "OPERATIONS WITH SALES"), "OPERATIONS WITH SALES", NA_character_))) |>
-  mutate( Category = str_remove_all(Category, "OPERATIONS WITH SALES")) |>
-  mutate(Measure = coalesce(Measure, 
-                               if_else(str_detect(Category, "SALES"), "SALES", NA_character_))) |>
-  mutate( Category = str_remove_all(Category, "SALES")) |>
-  mutate(Measure = coalesce(Measure, 
-                               if_else(str_detect(Category, "PRODUCTION"), "PRODUCTION", NA_character_))) |>
-  mutate( Category = str_remove_all(Category, "PRODUCTION")) |>
-  mutate(Measure = coalesce(Measure, 
-                               if_else(str_detect(Category, "OPERATIONS WITH AREA HARVESTED"), "OPERATIONS WITH AREA HARVESTED", NA_character_))) |>
-  mutate( Category = str_remove_all(Category, "OPERATIONS WITH AREA HARVESTED")) |>
-  mutate(Measure = coalesce(Measure, 
-                               if_else(str_detect(Category, "PRICE RECEIVED"), "PRICE RECEIVED", NA_character_))) |>
-  mutate( Category = str_remove_all(Category, "PRICE RECEIVED")) |>
-  mutate(Measure = coalesce(Measure, 
-                               if_else(str_detect(Item, "OPERATIONS WITH SALES"), "OPERATIONS WITH SALES", NA_character_))) |>
-  mutate( Item = str_remove_all(Item, "OPERATIONS WITH SALES")) |>
-  mutate(Measure = coalesce(Measure, 
-                               if_else(str_detect(Item, "SALES"), "SALES", NA_character_))) |>
-  mutate( Item = str_remove_all(Item, "SALES"))
-  
- strawberry <- strawberry |>
-   mutate(
-     Category = gsub("[-]", "", Category), 
-    Item = gsub("[-]", "", Item)
-   )
-strawberry$Category <- str_trim(strawberry$Category, side = "both")
-strawberry$Item <- str_trim(strawberry$Item, side = "both")
-strawberry$Metric <- str_trim(strawberry$Metric, side = "both")
-
-strawberry <- strawberry |>
-  mutate(Category = str_remove_all(Category,"ORGANIC"),
-         Item = str_remove_all(Item, "ORGANIC"),
-         Use = str_remove_all(Use, "ORGANIC STATUS"),
-         Use = str_remove_all(Use, "CHEMICAL,"),
-         Domain = str_remove_all(Domain, ", FUNGICIDE"),
-         Domain = str_remove_all(Domain, ", INSECTICIDE"),
-         Domain = str_remove_all(Domain, ", HERBICIDE"),
-         Domain = str_remove_all(Domain, "FERTILIZER"),
-         Domain = str_remove_all(Domain, ", OTHER")
-         )
-```
-
-Taking extra values into "Measure Column" which can help in reducing the NAs in the "Measure" Column.
-
-Combined Category and Item after finding almost same values.
-
-Removing the Blank Space in some of the Columns.
-
-```{r}
-
-values_to_shift <- c("AVG", "ADJUSTED BASE", "10 YEAR AVG", "10 YEAR AVG FOR PARITY PURPOSES")
-
-strawberry <- strawberry |>
-  mutate(
-    Measure = ifelse(Item %in% values_to_shift, 
-                        paste(Measure, Item , sep = "-"),
-                        Measure),  
-    Item = ifelse(Item %in% values_to_shift, NA_character_, Item) 
-  ) |> 
-  mutate(Applications = str_c(coalesce(Category, ""), coalesce(Item, ""))) |>
-  mutate(Domain = na_if(Domain, ""),
-         Applications = na_if(Applications, ""),
-         Use = na_if(Use, "")) |>
-  relocate(Applications, .after = Measure) |>
-  select(-Item, -Category)
-
-strawberry$Measure <- str_trim(strawberry$Measure, side = "both")
-strawberry$`Chemical Name`<- str_trim(strawberry$`Chemical Name`, side = "both")
-strawberry$Code <- str_trim(strawberry$Code, side = "both")
-strawberry$Use <- str_trim(strawberry$Use, side = "both")
-
-strawberry$Value[strawberry$Value =="(D)"] <- NA
-strawberry$Value[strawberry$Value =="(Z)"] <- NA
-```
-
-## Now Examine the Rest of the Columns
-
-Which ones need to be split?
-
-## Split Sales , Chemicals, Organic and Non-Organic into Different Dataframes
-
-(do this last after separating rows into separate data frames) (THEN rename the columns to correspond the analysis being done with the data frames)
-
-```{r}
-#|label: split srawberry into census and survey pieces
-
+#|label: split strawberries into census(further organic) and survey data
+#|echo: false
 census <- strawberry |> filter(Program == "CENSUS")
 
 survey <- strawberry |> filter(Program == "SURVEY")
+census <- census |> drop_one_value_col()
 
-nrow(strawberry) == (nrow(census) + nrow(survey))
-census_organic <- census |> filter(Domain == "ORGANIC STATUS")
-census_non_organic <- census |> filter(Domain != "ORGANIC STATUS")
-survey_chemical <- survey |> filter(Domain == "CHEMICAL")
-survey_non_chemical <- survey |> filter(Domain != "CHEMICAL")
-census_non_organic <- census_non_organic |>
-  rename(`Size-Bracket` = `Chemical Name`) |>
-  mutate(`Size-Bracket` = replace_na(`Size-Bracket`, "TOTAL"))
-census_organic <- census_organic |> drop_one_value_col()
+survey <- survey |> drop_one_value_col()
 
-census_non_organic <- census_non_organic |> drop_one_value_col()
-survey_chemical <- survey_chemical |> drop_one_value_col()
-survey_non_chemical <- survey_non_chemical |> drop_one_value_col()
+census <- census |>
+  separate_wider_delim(  cols = `Data Item`,
+                         delim = " - ",
+                         names = c("Fruit",
+                                 "Category"),
+                         too_many = "error",
+                         too_few = "align_start"
+                       )
+census <- census |>
+  separate_wider_delim(  cols = Fruit,
+                         delim = ", ",
+                         names = c("Fruit",
+                                 "ORGANIC",
+                                 "Organic detail"),
+                         
+                         too_many = "error",
+                         too_few = "align_start"
+                       )
+
+census <- census |> drop_one_value_col()
+organic <- census |> filter(ORGANIC == "ORGANIC")
+census <- census[(is.na(census$ORGANIC)),]
+census <- census |> drop_one_value_col()
 ```
+
+Split `Category` by `" "` into `Measure` and `Bearing Type` and consequently, removing `WITH` from `Bearing Type`.
+
+```{r}
+census <- census |>
+  separate_wider_delim(  cols = `Category`,
+                         delim = " ",
+                         names = c("Measure",
+                                 "Bearing Type"),
+                         too_many = "merge",
+                         too_few = "align_start"
+                       )
+  
+census$`Bearing Type` <- str_replace(census$`Bearing Type`, "WITH ", "")
+```
+
+Upon observing `Domain Category` as per instruction of assignment 1 in strawberry, we just rename `Domain Category` into `size_bracket` for the `census` as it is majorly having size brackets for `Domain Category` Column. Along with it, `NOT SPECIFIED` is renamed into `TOTAL` and `AREA GROWN:` is removed. This cleans up the `census` data.
+
+```{r}
+census <- census |> rename(size_bracket = `Domain Category`)
+
+census$size_bracket <- str_replace(census$size_bracket, "NOT SPECIFIED", "TOTAL")
+
+census$size_bracket <- str_replace(census$size_bracket, "AREA GROWN: ", "")
+organic <- organic |> drop_one_value_col()
+```
+
+Similarly to `census`, `Data Item` is split into four columns `Fruit`,`Category`,`Measure` and `Metric` for `survey` data by `,`. `Fruit` is further separated into `Fruit` and `Applications`
+
+```{r}
+survey <- survey |>  separate_wider_delim(cols = `Data Item`,
+                                                delim = ", ",
+                                                names = c("Fruit",
+                                                         "Category",
+                                                         "Measure",
+                                                         "Metric"
+                                                         ),
+                                                too_many = "merge",
+                                                too_few = "align_start")
+                                                
+                                                  
+survey <- survey |> separate_wider_delim(cols = "Fruit", 
+                                                 delim = " - ",
+                                                 names = c("Fruit",
+                                                           "Application"),
+                                                 too_many = "merge",
+                                                 too_few = "align_start"
+                                                 )
+  
+```
+
+#    Fixing Misplaced Values
+
+Using `shift_loc`, some values that are supposed to be in other column (here column to the right of `Application`) are searched in the `Application` and then shifted right to the expressed number rows away .
+
+```{r}
+#|label: fix the misplaced values
+
+survey %<>% shift_loc("Application", "PRICE RECEIVED", 2, 1 )
+
+survey %<>% shift_loc("Application", "ACRES HARVESTED", 1, 1 )
+
+survey %<>% shift_loc("Application", "ACRES PLANTED", 1, 1 )
+
+survey %<>% shift_loc("Application", "PRODUCTION", 2, 1 )
+
+survey %<>% shift_loc("Application", "YIELD", 2, 1 )
+
+survey %<>% shift_loc("Application", "APPLICATIONS", 3, 1 )
+
+survey %<>% shift_loc("Application", "TREATED", 3, 1 )
+
+survey %<>% drop_one_value_col()
+
+```
+
+In `survey`, `Domain` is further separated into `Chemical` and `Type`. We then filter `TOTAL(survey_total),` `CHEMICAL(survey_chem)` and `FERTILIZER(survey_chem)` data sets from the `survey`
+
+```{r}
+survey <- survey |>  
+  separate_wider_delim(cols = Domain,
+                      delim = ", ",
+                      names = c("Chemical",
+                                "Type"),
+                                                
+                      too_many = "merge",
+                      too_few = "align_start")
+survey_total <- survey |>  filter(Chemical == "TOTAL")
+survey_chem <- survey |>  filter(Chemical== "CHEMICAL")
+survey_fert <- survey |>  filter(Chemical == "FERTILIZER")
+```
+
+Similar to the logic we applied at `Application` , we apply it on the `Measure` as well to fill in the NAs in the right places. Further, `Category` is divided into `Market` and `Action`
+
+```{r}
+survey_total %<>% drop_one_value_col()
+
+### align terms
+
+survey_total %<>% shift_loc("Measure", "MEASURED IN $ / CWT", 1, 1 )
+
+
+survey_total %<>% shift_loc("Measure", "MEASURED IN $", 1, 1 )
+
+
+survey_total %<>% shift_loc("Measure", "MEASURED IN CWT", 1, 1 )
+
+survey_total %<>% shift_loc("Measure", "MEASURED IN TONS", 1, 1 )
+
+
+survey_total %<>% shift_loc("Measure", "MEASURED IN CWT / ACRE", 1, 1 )
+
+survey_total %<>% shift_loc("Measure", "MEASURED IN TONS / ACRE", 1, 1 )
+
+
+survey_total <- survey_total |>  
+  separate_wider_delim(cols = Category,
+                      delim = " - ",
+                      names = c("Market",
+                                "Action"),
+                   too_many = "merge",
+                    too_few = "align_start")
+
+```
+
+Shifting values from `Market` to the right places. This cleans up `survey_total`
+
+```{r}
+survey_total %<>%
+  select(-`State ANSI`)
+survey_total <-  survey_total |>
+  shift_loc("Market", "PRODUCTION", 2, 1)
+
+survey_total <-  survey_total |>
+  shift_loc("Market", "PRICE RECEIVED", 2, 1)
+ 
+```
+
+`Category` in `survey_chem` is divided into two categories namely `cat1` and `cat2`. Further due to repeating words, we remove `MEASURED IN` and `CHEMICAL` from the `Measure` and `Domain Category` respectively. We get `Chemical Name` from the `Domain Category` after seperating it into two and removing the first column. Punctuation signs are removed from the `Chemical Name` which we later divide into `Chemical Name` and `Code`. This cleans up `survey_chem`.
+
+```{r}
+survey_chem <- survey_chem |> drop_one_value_col()
+
+survey_chem <- survey_chem |> select(-`State ANSI`)
+
+survey_chem <- survey_chem |>  
+  separate_wider_delim(cols = Category,
+                      delim = " - ",
+                      names = c("cat1",
+                                "cat2"),
+                   too_many = "merge",
+                    too_few = "align_start")
+survey_chem$Measure <- str_replace(survey_chem$Measure, "MEASURED IN ", "")
+
+survey_chem$`Domain Category` <- str_replace(survey_chem$`Domain Category`, "CHEMICAL, ", "")
+
+survey_chem <- survey_chem |>
+          separate_wider_delim(cols = `Domain Category`,
+                              delim = ": ",
+                              names = c("type",
+                                "Chemical Name"),
+                           too_many = "merge",
+                            too_few = "align_start")
+
+survey_chem <- survey_chem |> select(-type)
+  
+survey_chem$`Chemical Name` <- str_replace(survey_chem$`Chemical Name`, "^\\(", "")
+  
+survey_chem$`Chemical Name` <- str_replace(survey_chem$`Chemical Name`, "\\)$", "")
+  
+survey_chem <- survey_chem |>  
+  separate_wider_delim(cols = `Chemical Name`,
+                      delim = " = ",
+                      names = c("Chemical Name",
+                                "Code"),
+                   too_many = "error",
+                    too_few = "align_start")
+
+```
+
+Now, we are to clean the `survey_fert` containing fertilizers data from the `survey`. Similarly to the `survey_chem`, we divide `Category` into two columns by `-` and then remove `MEASURED IN` and `CHEMICAL` from the `Domain Category.` Following the same routine, we clean up `survey_fert`.
+
+```{r}
+survey_fert <- survey_fert |> drop_one_value_col()
+
+survey_fert <- survey_fert |> select(-`State ANSI`)
+
+survey_fert <- survey_fert |>  
+  separate_wider_delim(cols = Category,
+                      delim = " - ",
+                      names = c("cat1",
+                                "cat2"),
+                   too_many = "merge",
+                    too_few = "align_start")
+                
+survey_fert$Measure <- str_replace(survey_fert$Measure, "MEASURED IN ", "")
+
+survey_fert$`Domain Category` <- str_replace(survey_fert$`Domain Category`, "CHEMICAL, ", "")
+
+survey_fert <- survey_fert |>
+          separate_wider_delim(cols = `Domain Category`,
+                              delim = ": ",
+                              names = c("type",
+                                "Chemical Name"),
+                           too_many = "merge",
+                            too_few = "align_start")
+  
+survey_fert$`Chemical Name` <- str_replace(survey_fert$`Chemical Name`, "^\\(", "")
+  
+survey_fert$`Chemical Name` <- str_replace(survey_fert$`Chemical Name`, "\\)$", "")
+   
+survey_fert <- survey_fert |> drop_one_value_col()
+
+```
+
+We convert `Value` column in `census` and `survey` into numeric.
+
+```{r}
+census$Value <- as.numeric(str_replace(census$Value, ",", ""))
+
+organic$Value <- as.numeric(str_replace(organic$Value, ",", ""))
+```
+
+#  Imputation
+
+We observe that in the `Bearing Type` we have some categories such as `BEARING`, `NON BEARING` and `GROWN.` Corresponding to the `TOTAL` value in the `Domain` and `size_bracket` , we can see the sum of all the previous value in the same category in `Value` Column. Using this logic, we get the function (with the help of chatgpt) `impute_values.` This will impute 0 where there are no previous values to apply the logic for `TOTAL` (these are very less cases). Similarly for more than one NA values in the same category. we get the remainder from subtracting sum of non-NA values from `TOTAL` to distribute remainder equally into NA values.
+
+```{r}
+library(dplyr)
+
+impute_values <- function(df) {
+  # Create a copy of the original data frame
+  original_df <- df
+  
+  # Group by the relevant columns without changing the order
+  df <- df %>%
+    group_by(State, Measure, `Bearing Type`) %>%
+    mutate(
+      # Get the total value for the group
+      total_value = Value[size_bracket == "TOTAL"],
+      # Sum non-total values
+      sum_non_total = sum(Value[size_bracket != "TOTAL"], na.rm = TRUE),
+      # Count the number of NAs in the non-total values
+      na_count = sum(is.na(Value[size_bracket != "TOTAL"])),
+      # Fill NAs in non-total rows if there's a total value
+      Value = ifelse(
+        is.na(Value) & size_bracket != "TOTAL" & !is.na(total_value),
+        round((total_value - sum_non_total) / na_count, 2),
+        Value
+      ),
+      # Fill TOTAL if it is NA and non-total values are available
+      Value = ifelse(
+        size_bracket == "TOTAL" & is.na(Value),
+        round(sum_non_total, 2),
+        Value
+      )
+    ) %>%
+    ungroup() %>%
+    select(-total_value, -sum_non_total, -na_count) # Clean up intermediate columns
+
+  # Format Value column to two decimal places
+  original_df$Value <- round(df$Value, 2)
+  
+  return(original_df)
+}
+
+census <- impute_values(census)
+
+
+```
+
+There are only two states in this data set that are having chemical data i.e. `CALIFORNIA` and `FLORIDA`.We start by the seeing how many chemicals are there in the `survey_chem` (175).
+
+```{r}
+
+unique(survey_chem$State)
+
+chemical_counts <- survey_chem %>%
+  group_by(`Chemical Name`) %>%
+  summarise(case_count = n()) %>%
+  arrange(desc(case_count))
+
+# View the result
+print(chemical_counts)
+
+```
+
+### **Good Chemicals**
+
+1.  **Neem Oil** (NEEM OIL, NEEM OIL, CLAR. HYD.)
+
+2.  **Garlic Oil** (GARLIC OIL)
+
+3.  **Canola Oil** (CANOLA OIL)
+
+4.  **Sulfur** (SULFUR)
+
+5.  **Bacillus Subtilis** (BACILLUS SUBTILIS)
+
+6.  **Beauveria Bassiana** (BEAUVERIA BASSIANA)
+
+7.  **Trichoderma Harzianum** (TRICHODERMA HARZ.)
+
+8.  **Aureobasidium Pullulans** (AUREOBASIDIUM PULLULANS DSM 14940, AUREOBASIDIUM PULLULANS DSM 14941)
+
+9.  **Hydrogen Peroxide** (HYDROGEN PEROXIDE)
+
+10. **Mustard Oil** (MUSTARD OIL)
+
+### **Bad Chemicals**
+
+1.  **Glyphosate** (GLYPHOSATE ISO. SALT, GLYPHOSATE POT. SALT)
+
+2.  **Malathion** (MALATHION)
+
+3.  **Chlorpyrifos** (CHLORPYRIFOS)
+
+4.  **Paraquat** (PARAQUAT)
+
+5.  **Carbaryl** (CARBARYL)
+
+6.  **Imidacloprid** (IMIDACLOPRID)
+
+7.  **Bifenthrin** (BIFENTHRIN)
+
+8.  **Permethrin** (PERMETHRIN)
+
+9.  **Thiamethoxam** (THIAMETHOXAM)
+
+10. **Mustard Oil** (MUSTARD OIL)
+
+We check these oils as to which state are they in? Surprisingly they are in `CALIFORNIA`
+
+```{r}
+neem_oil_states <- survey_chem %>%
+  filter(`Chemical Name` == "NEEM OIL" | `Chemical Name` == "NEEM OIL, CLAR. HYD." ) %>%
+  select(State) %>%
+  distinct()  # Get distinct states to avoid duplicates
+
+neem_oil_states
+
+garlic_oil_states <- survey_chem %>%
+  filter(`Chemical Name` == "GARLIC OIL") %>%
+  select(State) %>%
+  distinct()  # Get distinct states to avoid duplicates
+
+garlic_oil_states
+
+```
+
+This leads me to do further exploration on the number of cases per chemical for the both states. I see Oils used in `California` as one of the chemicals having `Major` cases i.e. 20
+
+```{r}
+# Assuming 'survey_chem' is your data frame and has a column for 'State' and 'Chemical Name'
+california_chemicals <- survey_chem[survey_chem$State == "CALIFORNIA", ]
+
+# Display the unique chemicals used in California
+unique_california_chemicals <- unique(california_chemicals$`Chemical Name`)
+
+# Count the occurrences of each chemical in California
+california_counts <- table(california_chemicals$`Chemical Name`)
+
+# Convert the table to a data frame
+california_counts_df <- as.data.frame(california_counts)
+
+# Rename the columns for clarity
+colnames(california_counts_df) <- c("Chemical", "Count")
+california_counts_df <- california_counts_df[order(-california_counts_df$Count), ]
+row.names(california_counts_df) <- NULL
+# Print the results
+print(california_counts_df)
+
+```
+
+For the Florida, I observe that they are using Mustard oil in minority but still it is being used.
+
+```{r}
+# Assuming 'survey_chem' is your data frame and has a column for 'State' and 'Chemical Name'
+florida_chemicals <- survey_chem[survey_chem$State == "FLORIDA", ]
+
+# Display the unique chemicals used in California
+unique_florida_chemicals <- unique(florida_chemicals$`Chemical Name`)
+
+# Count the occurrences of each chemical in California
+florida_counts <- table(florida_chemicals$`Chemical Name`)
+
+# Convert the table to a data frame
+florida_counts_df <- as.data.frame(florida_counts)
+
+# Rename the columns for clarity
+colnames(florida_counts_df) <- c("Chemical", "Count")
+florida_counts_df <- florida_counts_df[order(-florida_counts_df$Count), ]
+row.names(florida_counts_df) <- NULL
+# Print the results
+print(florida_counts_df)
+```
+
+I check how many cases for good chemicals (as in less toxicity or considered more beneficial than harmful) are there in both the states.
+
+```{r}
+good_chemicals <- c("NEEM OIL", "GARLIC OIL", "CANOLA OIL", "SULFUR", 
+                    "BACILLUS SUBTILIS", "BEAUVERIA BASSIANA", 
+                    "TRICHODERMA HARZ.", "AUREOBASIDIUM PULLULANS DSM 14940", 
+                    "AUREOBASIDIUM PULLULANS DSM 14941", "HYDROGEN PEROXIDE", "MUSTARD OIL")
+
+# Filter for good chemicals used in California
+california_good_chemicals <- california_counts_df[california_counts_df$`Chemical` %in% good_chemicals, ]
+row.names(california_good_chemicals) <- NULL
+# Print the results
+print(california_good_chemicals)
+florida_good_chemicals <- florida_counts_df[florida_counts_df$`Chemical` %in% good_chemicals, ]
+row.names(florida_good_chemicals) <- NULL
+# Print the results
+print(florida_good_chemicals)
+
+```
+
+For `CALIFORNIA`, I see out of 10 good chemicals chatgpt pointed out, there are 9 being used. Whereas for Florida, only 4 out of 10 are being used much to the disappointment but then again there are 175, I assume there would be more good chemicals that I am not observing being used in Florida. For the bad chemicals, both the states uses about 6 out of 10 I am observing.
+
+```{r}
+# Define bad chemicals
+bad_chemicals <- c("BACILLUS THURINGIENSIS", "BIFENTHRIN", "CHLORPYRIFOS", 
+                   "DIAZINON", "FIPRONIL", "IMIDACLOPRID", 
+                   "MALATHION", "METOLACHLOR", "PERMETHRIN", 
+                   "PENOXSULAM", "OXAMYL", "GLYPHOSATE")
+
+# Filter for bad chemicals used in California
+california_bad_chemicals <- california_counts_df[california_counts_df$`Chemical` %in% bad_chemicals, ]
+row.names(california_bad_chemicals) <- NULL
+# Print the results for California
+print(california_bad_chemicals)
+
+# Filter for bad chemicals used in Florida
+florida_bad_chemicals <- florida_counts_df[florida_counts_df$`Chemical` %in% bad_chemicals, ]
+row.names(florida_bad_chemicals) <- NULL
+# Print the results for Florida
+print(florida_bad_chemicals)
+
+```
+
+## Split Sales , Chemicals, Organic and Non-Organic into Different Dataframes
 
 Writing Code into different CSV Files
 
@@ -376,11 +705,19 @@ Writing Code into different CSV Files
 write.csv(strawberry, file = "strawberry_cleaneddata.csv")
 write.csv(census, file = "census_data.csv")
 write.csv(survey, file = "survey_data.csv")
-write.csv(census_organic, file = "census_organic.csv")
-write.csv(census_non_organic, file = "census_non_organic.csv")
-write.csv(survey_chemical, file = "survey_chemical.csv")
-write.csv(survey_non_chemical, file = "survey_non_chemical.csv")
+write.csv(organic, file = "organic.csv")
+#write.csv(census_non_organic, file = "census_non_organic.csv")
+write.csv(survey_chem, file = "survey_chemical.csv")
+write.csv(survey_total, file = "survey_total.csv")
+write.csv(survey_fert, file = "survey_fert.csv")
 ```
+
+# Questions after EDA
+
+1.  Is there any connection between majority of Indian being in `California` and Oils being used as pesticides/fungicides especially Neem Oil?
+2.  Why is Mustard Oil not used in the `California`?
+
+# Study Material
 
 [epa numbers](https://archive.epa.gov/pesticides/chemicalsearch/chemical/foia/web/html/128810.html)
 
