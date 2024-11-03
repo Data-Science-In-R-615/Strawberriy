@@ -57,7 +57,14 @@ Also, Is `NEEM OIL` as good for the strawberries as it is claimed to be? Afteral
 
 `survey_total.csv` - Survey and Total  
 
-`strawberry_cleaneddata.csv` - Cleaned Strawberry dataset with original approach
+`strawberry_cleaneddata.csv` - Cleaned Strawberry dataset with original approach  
+
+No graphs/ Visualization is added yet due to limited information on the question I have, Strawberry have just about 20 cases of `NEEM OIL` being used which doesn't really compel me to use visualization in 
+ 
+ addition to all the bad chemicals being used almost in the same proportion. However, work is in progress and Hopefully, more information can be found to draw more conclusions.
+
+
+
 
 
 
