@@ -41,18 +41,26 @@ Also, Is `NEEM OIL` as good for the strawberries as it is claimed to be? Afteral
   
 <h2> Files Description</h2>
 
-`USDA-NASS data cleaning Original.qmd` -  contains code which I submitted for the cleaning of strawberry dataset. It was an attempt to clean the whole dataset to some extent before it was split based on different creteria to observe  
-different information such as CENSUS, SURVEY. But it was wrong step to take. It is to be noted that to some extent when dealing with large datasets, it is better to use divide and conquer.
-`USDA-NADD data cleaning.qmd` -contains code submitted for the chemical analysis. This is improved version of Original approach which means that strawberry dataset is divided into different small datasets before cleaning. This approach  
-does have its own disadvantages - doing some steps multiple times for different chunks which further tells us importance of creation of functions. 
-`census_data.csv` - Census Data
-`survey_data.csv` - Survey Data
-`census_organic.csv` -  Census and Organic
-`census_non_organic.csv` -  Census and Non Organic 
-`survey_chemical.csv` -  Survey and Chemical
-`survey_non_chemical.csv` -  Survey and Non-Chemical
-`survey_fert.csv` - Survey and Fertilizer 
-`survey_total.csv` - Survey and Total 
+`USDA-NASS data cleaning Original.qmd` -  contains code which I submitted for the cleaning of strawberry dataset. It was an attempt to clean the whole dataset to some extent before it was split based on different creteria to observe different information such as CENSUS, SURVEY. But it was wrong step to take. It is to be noted that to some extent when dealing with large datasets, it is better to use divide and conquer.  
+
+`USDA-NADD data cleaning.qmd` -contains code submitted for the chemical analysis. This is improved version of Original approach which means that strawberry dataset is divided into different small datasets before cleaning. This approach does have its own disadvantages - doing some steps multiple times for different chunks which further tells us importance of creation of functions.  
+
+`census_data.csv` - Census Data  
+
+`survey_data.csv` - Survey Data  
+
+`census_organic.csv` -  Census and Organic  
+
+`census_non_organic.csv` -  Census and Non Organic  
+
+`survey_chemical.csv` -  Survey and Chemical  
+
+`survey_non_chemical.csv` -  Survey and Non-Chemical  
+
+`survey_fert.csv` - Survey and Fertilizer  
+
+`survey_total.csv` - Survey and Total  
+
 `strawberry_cleaneddata.csv` - Cleaned Strawberry dataset with original approach
 
 
